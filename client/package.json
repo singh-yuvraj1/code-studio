@@ -1,0 +1,33 @@
+{
+  "name": "codesync-ai",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "npm --prefix server run dev",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test:server": "npm --prefix server test"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@monaco-editor/react": "^4.7.0",
+    "axios": "^1.8.4",
+    "lucide-react": "^0.468.0",
+    "monaco-editor": "^0.57.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.4",
+    "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^6.2.0"
+  },
+  "overrides": {
+    "monaco-editor": {
+      "dompurify": "^3.4.16"
+    }
+  }
+}
