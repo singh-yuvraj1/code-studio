@@ -16,47 +16,78 @@ CodeSync AI is a browser-based coding workspace with room-based collaboration. T
 - React 18, Vite, Tailwind CSS 4, React Router, Monaco Editor, Socket.IO client, and Lucide React.
 - Node.js, Express, Socket.IO, dotenv, and cors.
 
+## Project Structure
+
+```
+codesyncai/
+  client/                  # Frontend (React 18 + Vite)
+    public/                # Static assets
+    src/                   # React components, pages, styles, libraries
+    index.html             # Vite HTML entry point
+    package.json           # Frontend dependencies & scripts
+    vite.config.js         # Vite configuration
+    vercel.json            # Vercel SPA rewrite configuration
+    .env.example           # Client environment variable template
+  server/                  # Backend (Node.js + Express + Socket.IO)
+    src/                   # Server entry, rooms, and socket handlers
+    test/                  # Backend unit and integration tests
+    package.json           # Server dependencies & scripts
+    .env.example           # Server environment variable template
+  .gitignore               # Repository-wide ignore rules
+  README.md                # Project documentation
+```
+
 ## Run locally
 
-Use Node.js 20 or later. Install the frontend and backend dependencies once from the project root:
+Use Node.js 20 or later. Install dependencies in both the `client` and `server` folders:
 
 ```sh
-npm install
-npm install --prefix server
+cd client && npm install
+cd ../server && npm install
 ```
 
-Copy `server/.env.example` to `server/.env` if you want to set the server options explicitly. The default frontend URL is `http://localhost:5173`; `CLIENT_URL` accepts comma-separated allowed browser origins.
-
-Start each service in a separate terminal, from the project root:
+### 1. Start the Backend
 
 ```sh
-npm run dev:server
-```
-
-```sh
+cd server
 npm run dev
 ```
 
-The frontend runs at the Vite URL shown in its terminal. The backend listens on port 5000 by default; its health check is `http://localhost:5000/api/health`. Set `VITE_SERVER_URL` in a root `.env` only if the backend is hosted at a different URL.
+The backend listens on port 5000 by default; its health check is `http://localhost:5000/api/health`.
+
+### 2. Start the Frontend
+
+In a separate terminal:
+
+```sh
+cd client
+npm run dev
+```
+
+The frontend runs at the Vite local URL (typically `http://localhost:5173`).
 
 ## Configuration
 
 `server/.env.example`:
 
 - `PORT` — backend port (default: `5000`).
-- `CLIENT_URL` — comma-separated frontend origins allowed by HTTP and Socket.IO CORS.
+- `CLIENT_URL` — comma-separated frontend origins allowed by HTTP and Socket.IO CORS (default: `http://localhost:5173,http://localhost:5174`).
 
-Root `.env.example`:
+`client/.env.example`:
 
-- `VITE_SERVER_URL` — backend URL used by the browser (default: `http://localhost:5000`).
+- `VITE_API_URL` — backend URL used by the browser in production (e.g., your deployed backend on Render/Railway).
+- `VITE_SERVER_URL` — alternative backend URL fallback (default: `http://localhost:5000`).
 
 No Gemini key or database is required for room collaboration.
 
-## Tests
+## Tests & Build
 
 ```sh
-npm run build
-npm run test:server
+# Run backend tests
+cd server && npm test
+
+# Run frontend production build
+cd client && npm run build
 ```
 
 Backend tests cover the health route and CORS, room ID/name validation, maximum room size, idle-room expiry, code synchronization, room isolation, authorization, and disconnect cleanup.

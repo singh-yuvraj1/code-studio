@@ -5,10 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "npm --prefix server run dev",
     "build": "vite build",
-    "preview": "vite preview",
-    "test:server": "npm --prefix server test"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",
