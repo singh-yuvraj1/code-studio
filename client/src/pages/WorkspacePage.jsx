@@ -15,16 +15,25 @@ import {
   Copy,
   Download,
   FileCode2,
+  FolderOpen,
   LoaderCircle,
+  Maximize2,
+  Minimize2,
   PanelRightClose,
   PanelRightOpen,
+  Plus,
   Save,
-  Send,
+  Settings,
+  Share2,
   Sparkles,
   UsersRound,
+  WrapText,
+  X,
 } from "lucide-react";
 import { Link, useParams } from "react-router-dom";
 import Brand from "../components/Brand.jsx";
+import AIAssistant from "../components/AIAssistant.jsx";
+import FileExplorer, { detectLanguage, getLanguageBadge } from "../components/FileExplorer.jsx";
 import { connectSocket, emitWithAck, getDisplayName, getSocket } from "../lib/socket.js";
 
 self.MonacoEnvironment = {
@@ -47,17 +56,8 @@ const LANGUAGES = [
   { id: "json", label: "JSON", extension: "json" },
   { id: "java", label: "Java", extension: "java" },
   { id: "cpp", label: "C++", extension: "cpp" },
+  { id: "markdown", label: "Markdown", extension: "md" },
 ];
-
-const INITIAL_CODE = `// Welcome to your CodeSync workspace
-// Share this room ID with a teammate to get started.
-
-function greet(name) {
-  return \`Hello, \${name}! Let's build something great.\`;
-}
-
-console.log(greet("world"));
-`;
 
 const THEME_OPTIONS = [
   { id: "vs-dark", label: "Dark" },
@@ -65,43 +65,134 @@ const THEME_OPTIONS = [
   { id: "light", label: "Light" },
 ];
 
-const SUGGESTIONS = [
-  "Explain this code",
-  "Find potential bugs",
-  "Write a few tests",
+const DEFAULT_FILES = [
+  {
+    id: "f-main",
+    name: "main.js",
+    language: "javascript",
+    content: `// Welcome to your Code Studio workspace
+// Write code, collaborate in real time, and ask the AI assistant.
+
+function greet(name) {
+  return \`Hello, \${name}! Let's build something great.\`;
+}
+
+console.log(greet("world"));
+`,
+  },
+  {
+    id: "f-notes",
+    name: "notes.md",
+    language: "markdown",
+    content: `# Code Studio Project Notes
+
+- **Real-Time Collaboration**: Share your Room ID with teammates.
+- **Multi-File Workspace**: Add and manage files in the file explorer.
+- **AI Coding Assistant**: Request refactoring, code explanation, and bug checks.
+`,
+  },
 ];
 
 export default function WorkspacePage() {
   const { roomId = "" } = useParams();
-  const storageKey = useMemo(() => `codesync:room:${roomId}`, [roomId]);
-  const [code, setCode] = useState(INITIAL_CODE);
-  const [language, setLanguage] = useState(LANGUAGES[0].id);
+  const storageFilesKey = useMemo(() => `codesync:room:${roomId}:files`, [roomId]);
+  const storageActiveKey = useMemo(() => `codesync:room:${roomId}:active`, [roomId]);
+
+  // Load initial files from local storage if available
+  const [files, setFiles] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem(storageFilesKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn("Unable to read saved files from localStorage", e);
+    }
+    return DEFAULT_FILES;
+  });
+
+  const [activeFileId, setActiveFileId] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem(storageActiveKey);
+      if (saved && files.some((f) => f.id === saved)) return saved;
+    } catch {
+      // ignore
+    }
+    return files[0]?.id || "f-main";
+  });
+
+  const activeFile = useMemo(
+    () => files.find((f) => f.id === activeFileId) || files[0] || DEFAULT_FILES[0],
+    [files, activeFileId]
+  );
+
   const [theme, setTheme] = useState(THEME_OPTIONS[0].id);
+  const [fontSize, setFontSize] = useState(14);
+  const [wordWrap, setWordWrap] = useState("on");
+  const [showMinimap, setShowMinimap] = useState(false);
   const [showAssistant, setShowAssistant] = useState(true);
+  const [showExplorer, setShowExplorer] = useState(true);
   const [saveState, setSaveState] = useState("idle");
   const [copyState, setCopyState] = useState(false);
-  const [savedCode, setSavedCode] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState("connecting");
   const [connectionError, setConnectionError] = useState("");
   const [users, setUsers] = useState([]);
-  const lastSyncedCodeRef = useRef(code);
+  const [unsavedMap, setUnsavedMap] = useState({});
+
+  const editorRef = useRef(null);
+  const lastSyncedCodeRef = useRef(activeFile.content);
   const hasJoinedRoomRef = useRef(false);
 
-  const joinRoom = useCallback(async (socket) => {
-    const response = await emitWithAck(socket, "room:join", {
-      roomId,
-      displayName: getDisplayName(),
-    });
-    if (typeof response.code !== "string") {
-      throw new Error("The room did not provide its current code.");
+  // Track room in recent workspaces
+  useEffect(() => {
+    if (!roomId) return;
+    try {
+      const recentsKey = "codesync:recent_workspaces";
+      const existing = JSON.parse(window.localStorage.getItem(recentsKey) || "[]");
+      const filtered = existing.filter((item) => item.id !== roomId);
+      filtered.unshift({
+        id: roomId,
+        title: `Workspace ${roomId}`,
+        updatedAt: Date.now(),
+        fileCount: files.length,
+        language: activeFile.language,
+      });
+      window.localStorage.setItem(recentsKey, JSON.stringify(filtered.slice(0, 8)));
+    } catch (e) {
+      console.warn("Unable to update recent workspaces", e);
     }
-    lastSyncedCodeRef.current = response.code;
-    setCode(response.code);
-    setUsers(response.users);
-    hasJoinedRoomRef.current = true;
-    setConnectionError("");
-    setConnectionStatus("connected");
-  }, [roomId]);
+  }, [roomId, files.length, activeFile.language]);
+
+  // Save active file selection
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(storageActiveKey, activeFileId);
+    } catch {
+      // ignore
+    }
+  }, [activeFileId, storageActiveKey]);
+
+  // Join Socket.IO room
+  const joinRoom = useCallback(
+    async (socket) => {
+      const response = await emitWithAck(socket, "room:join", {
+        roomId,
+        displayName: getDisplayName(),
+      });
+      if (typeof response.code === "string") {
+        lastSyncedCodeRef.current = response.code;
+        setFiles((prev) =>
+          prev.map((f) => (f.id === activeFileId ? { ...f, content: response.code } : f))
+        );
+      }
+      setUsers(response.users || []);
+      hasJoinedRoomRef.current = true;
+      setConnectionError("");
+      setConnectionStatus("connected");
+    },
+    [roomId, activeFileId]
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -137,7 +228,9 @@ export default function WorkspacePage() {
     function onCodeSync(payload) {
       if (typeof payload?.code !== "string") return;
       lastSyncedCodeRef.current = payload.code;
-      setCode(payload.code);
+      setFiles((prev) =>
+        prev.map((f) => (f.id === activeFileId ? { ...f, content: payload.code } : f))
+      );
     }
 
     socket.on("connect", onConnect);
@@ -169,119 +262,192 @@ export default function WorkspacePage() {
       socket.off("code:sync", onCodeSync);
       if (socket.connected) socket.emit("room:leave");
     };
-  }, [joinRoom, roomId]);
+  }, [joinRoom, roomId, activeFileId]);
 
+  // Synchronize changes with debounce over Socket.IO
   useEffect(() => {
-    if (
-      connectionStatus !== "connected" ||
-      code === lastSyncedCodeRef.current
-    ) {
+    if (connectionStatus !== "connected" || activeFile.content === lastSyncedCodeRef.current) {
       return undefined;
     }
 
     const socket = getSocket();
     const timeoutId = window.setTimeout(() => {
-      socket.emit("code:change", { code }, (response) => {
+      socket.emit("code:change", { code: activeFile.content }, (response) => {
         if (response?.ok) {
-          lastSyncedCodeRef.current = code;
+          lastSyncedCodeRef.current = activeFile.content;
           return;
         }
         if (!response) return;
         setConnectionError(response.message || "Unable to synchronize this code.");
       });
-    }, 120);
+    }, 150);
 
     return () => window.clearTimeout(timeoutId);
-  }, [code, connectionStatus]);
+  }, [activeFile.content, connectionStatus]);
 
-  useEffect(() => {
-    try {
-      const storedCode = window.localStorage.getItem(storageKey);
-      if (storedCode !== null) {
-        setCode(storedCode);
-        setSavedCode(storedCode);
-      } else {
-        setCode(INITIAL_CODE);
-        setSavedCode(null);
+  // Handle active file code edit
+  function handleCodeChange(newContent) {
+    const text = newContent ?? "";
+    setFiles((prev) =>
+      prev.map((f) => (f.id === activeFile.id ? { ...f, content: text } : f))
+    );
+    setUnsavedMap((prev) => ({ ...prev, [activeFile.id]: true }));
+  }
+
+  // Handle language change for active file
+  function handleLanguageChange(newLang) {
+    setFiles((prev) =>
+      prev.map((f) => (f.id === activeFile.id ? { ...f, language: newLang } : f))
+    );
+  }
+
+  // Save all files to localStorage
+  function saveDraft() {
+    setSaveState("saving");
+    window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(storageFilesKey, JSON.stringify(files));
+        setSaveState("saved");
+        setUnsavedMap({});
+        window.setTimeout(() => setSaveState("idle"), 1800);
+      } catch (e) {
+        console.error("Unable to save draft", e);
+        setSaveState("error");
       }
-    } catch (error) {
-      console.error("Unable to read this room's local draft.", error);
-    }
-  }, [storageKey]);
+    }, 180);
+  }
 
+  // Keyboard shortcut Ctrl+S
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if ((event.ctrlKey || event.metaKey) && event.key === "s") {
+        event.preventDefault();
+        saveDraft();
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [files]);
+
+  // Create new file
+  function handleCreateFile(name) {
+    const lang = detectLanguage(name);
+    const newFile = {
+      id: `f-${Date.now()}`,
+      name,
+      language: lang,
+      content: `// ${name}\n`,
+    };
+    setFiles((prev) => [...prev, newFile]);
+    setActiveFileId(newFile.id);
+  }
+
+  // Delete file
+  function handleDeleteFile(fileId) {
+    if (files.length <= 1) return;
+    setFiles((prev) => prev.filter((f) => f.id !== fileId));
+    if (activeFileId === fileId) {
+      const remaining = files.filter((f) => f.id !== fileId);
+      setActiveFileId(remaining[0]?.id || "");
+    }
+  }
+
+  // Rename file
+  function handleRenameFile(fileId, newName) {
+    const newLang = detectLanguage(newName);
+    setFiles((prev) =>
+      prev.map((f) => (f.id === fileId ? { ...f, name: newName, language: newLang } : f))
+    );
+  }
+
+  // Copy Room ID
   async function copyRoomId() {
     try {
       await navigator.clipboard.writeText(roomId);
       setCopyState(true);
       window.setTimeout(() => setCopyState(false), 1600);
-    } catch (error) {
-      console.error("Unable to copy the room ID.", error);
-      setCopyState(false);
+    } catch (e) {
+      console.warn("Unable to copy room ID", e);
     }
   }
 
-  function saveCode() {
-    setSaveState("saving");
-    window.setTimeout(() => {
-      try {
-        window.localStorage.setItem(storageKey, code);
-        setSavedCode(code);
-        setSaveState("saved");
-        window.setTimeout(() => setSaveState("idle"), 1800);
-      } catch (error) {
-        console.error("Unable to save this room's local draft.", error);
-        setSaveState("error");
-      }
-    }, 160);
-  }
-
-  function downloadCode() {
-    const selectedLanguage = LANGUAGES.find((item) => item.id === language);
-    const blob = new Blob([code], { type: "text/plain;charset=utf-8" });
+  // Download active file
+  function downloadActiveFile() {
+    const blob = new Blob([activeFile.content], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `codesync-${roomId.toLowerCase()}.${selectedLanguage?.extension ?? "txt"}`;
+    link.download = activeFile.name;
     document.body.appendChild(link);
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
   }
 
-  function restoreSavedCode() {
-    if (savedCode !== null) setCode(savedCode);
+  // Download all files as a project bundle
+  function downloadProjectBundle() {
+    const bundleData = {
+      roomId,
+      exportedAt: new Date().toISOString(),
+      files: files.map(({ name, language, content }) => ({ name, language, content })),
+    };
+    const blob = new Blob([JSON.stringify(bundleData, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `codesync-project-${roomId.toLowerCase()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // Apply code suggested by AI
+  function handleApplyAICode(newCode) {
+    handleCodeChange(newCode);
   }
 
   const saveLabel = {
     idle: "Save",
     saving: "Saving",
     saved: "Saved",
-    error: "Save failed",
+    error: "Failed",
   }[saveState];
 
   return (
     <main className="workspace-shell">
+      {/* Top Header */}
       <header className="workspace-header">
         <div className="workspace-brand">
           <Brand compact />
           <span className="header-divider" />
-          <Link className="back-link" to="/" aria-label="Back to dashboard">
+          <Link aria-label="Back to dashboard" className="back-link" to="/">
             <ArrowLeft size={15} />
           </Link>
           <div className="room-breadcrumb">
-            <span className="room-name">Untitled session</span>
+            <span className="room-name">Code Studio</span>
             <span className="room-id">ROOM / {roomId}</span>
           </div>
         </div>
+
         <div className="workspace-header-actions">
+          {/* Backend Connection Status */}
           <div
             className={`backend-status connection-${connectionStatus}`}
-            title={connectionError || `Connection ${connectionStatus}`}
+            title={connectionError || `Connection status: ${connectionStatus}`}
           >
             <span className={`status-indicator status-${connectionStatus}`} />
             <span>{connectionStatusLabel(connectionStatus)}</span>
           </div>
-          <div className="connected-users" aria-label={`${users.length} connected users`} title={users.map((user) => user.displayName).join(", ")}>
+
+          {/* Connected Users */}
+          <div
+            aria-label={`${users.length} connected collaborators`}
+            className="connected-users"
+            title={users.map((u) => u.displayName).join(", ")}
+          >
             <UsersRound size={14} />
             <span>{users.length}</span>
             <div className="connected-user-names">
@@ -292,149 +458,280 @@ export default function WorkspacePage() {
               ))}
             </div>
           </div>
+
           <span className="header-divider action-divider" />
-          <button className="button button-quiet room-copy-button" onClick={copyRoomId} title="Copy room ID">
-            {copyState ? <Check size={15} /> : <Copy size={14} />}
-            <span>{copyState ? "Copied" : "Copy ID"}</span>
+
+          {/* Copy Room ID Button */}
+          <button
+            className="button button-quiet room-copy-button"
+            onClick={copyRoomId}
+            title="Copy room ID to share with teammates"
+            type="button"
+          >
+            {copyState ? <Check size={14} /> : <Share2 size={13} />}
+            <span>{copyState ? "Copied ID" : "Share"}</span>
           </button>
+
+          {/* Save Draft Button */}
           <button
             className={`button button-quiet ${saveState === "error" ? "button-error" : ""}`}
-            onClick={saveCode}
             disabled={saveState === "saving"}
-            title={saveState === "error" ? "Local save failed — check browser storage" : "Save draft in this browser"}
+            onClick={saveDraft}
+            title="Save draft in this browser (Ctrl+S)"
+            type="button"
           >
-            {saveState === "saving" ? <LoaderCircle className="spin" size={15} /> : saveState === "saved" ? <Check size={15} /> : <Save size={15} />}
+            {saveState === "saving" ? (
+              <LoaderCircle className="spin" size={14} />
+            ) : saveState === "saved" ? (
+              <Check size={14} />
+            ) : (
+              <Save size={14} />
+            )}
             <span>{saveLabel}</span>
           </button>
-          <button className="button button-quiet download-button" onClick={downloadCode} title="Download source file">
-            <Download size={15} />
-            <span>Download</span>
-          </button>
+
+          {/* Download Dropdown / Action */}
+          <div className="download-group">
+            <button
+              className="button button-quiet download-button"
+              onClick={downloadActiveFile}
+              title={`Download ${activeFile.name}`}
+              type="button"
+            >
+              <Download size={14} />
+              <span>Download</span>
+            </button>
+            <button
+              className="button button-quiet download-bundle-btn"
+              onClick={downloadProjectBundle}
+              title="Download all project files as JSON bundle"
+              type="button"
+            >
+              Export
+            </button>
+          </div>
         </div>
       </header>
 
+      {/* Editor Toolbar with Multi-File Tabs & Controls */}
       <div className="workspace-toolbar">
-        <div className="file-tab">
-          <FileCode2 size={15} />
-          <span>main.{LANGUAGES.find((item) => item.id === language)?.extension}</span>
-          {savedCode !== code && <span aria-label="Unsaved changes" className="unsaved-dot" />}
+        <div className="toolbar-left-group">
+          {/* File Explorer Toggle */}
+          <button
+            aria-label={showExplorer ? "Collapse file explorer" : "Expand file explorer"}
+            className={`toolbar-icon-toggle ${showExplorer ? "active" : ""}`}
+            onClick={() => setShowExplorer((prev) => !prev)}
+            title="Toggle File Explorer"
+            type="button"
+          >
+            <FolderOpen size={14} />
+          </button>
+
+          {/* File Tabs */}
+          <div className="file-tabs-scroll" role="tablist">
+            {files.map((file) => {
+              const badge = getLanguageBadge(file.language);
+              const isActive = file.id === activeFile.id;
+              const isUnsaved = Boolean(unsavedMap[file.id]);
+              return (
+                <div
+                  aria-selected={isActive}
+                  className={`file-tab ${isActive ? "active-tab" : ""}`}
+                  key={file.id}
+                  onClick={() => setActiveFileId(file.id)}
+                  role="tab"
+                >
+                  <span
+                    className="file-tab-badge"
+                    style={{ color: badge.color, backgroundColor: badge.bg }}
+                  >
+                    {badge.text}
+                  </span>
+                  <span className="file-tab-title">{file.name}</span>
+                  {isUnsaved && <span className="unsaved-dot" title="Unsaved changes" />}
+                  {files.length > 1 && (
+                    <button
+                      aria-label={`Close ${file.name}`}
+                      className="tab-close-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteFile(file.id);
+                      }}
+                      title="Close file"
+                      type="button"
+                    >
+                      <X size={11} />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            <button
+              className="new-tab-btn"
+              onClick={() => {
+                const nextNum = files.length + 1;
+                handleCreateFile(`file${nextNum}.js`);
+              }}
+              title="Add new file"
+              type="button"
+            >
+              <Plus size={13} />
+            </button>
+          </div>
         </div>
+
+        {/* Toolbar Right Controls */}
         <div className="toolbar-controls">
+          {/* Language Selector */}
           <label className="select-wrap">
             <span className="sr-only">Programming language</span>
-            <select onChange={(event) => setLanguage(event.target.value)} value={language}>
+            <select
+              onChange={(e) => handleLanguageChange(e.target.value)}
+              value={activeFile.language}
+            >
               {LANGUAGES.map((item) => (
-                <option key={item.id} value={item.id}>{item.label}</option>
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
               ))}
             </select>
-            <ChevronDown size={13} />
+            <ChevronDown size={12} />
           </label>
+
+          {/* Theme Selector */}
           <label className="select-wrap theme-select">
             <span className="sr-only">Editor theme</span>
-            <select onChange={(event) => setTheme(event.target.value)} value={theme}>
+            <select onChange={(e) => setTheme(e.target.value)} value={theme}>
               {THEME_OPTIONS.map((item) => (
-                <option key={item.id} value={item.id}>{item.label} theme</option>
+                <option key={item.id} value={item.id}>
+                  {item.label} theme
+                </option>
               ))}
             </select>
-            <ChevronDown size={13} />
+            <ChevronDown size={12} />
           </label>
+
+          {/* Word Wrap Toggle */}
+          <button
+            aria-label="Toggle line wrap"
+            className={`icon-button ${wordWrap === "on" ? "active-tool" : ""}`}
+            onClick={() => setWordWrap((prev) => (prev === "on" ? "off" : "on"))}
+            title={wordWrap === "on" ? "Word wrap: On" : "Word wrap: Off"}
+            type="button"
+          >
+            <WrapText size={15} />
+          </button>
+
+          {/* Font Size Adjuster */}
+          <button
+            aria-label="Toggle font size"
+            className="icon-button font-size-btn"
+            onClick={() => setFontSize((prev) => (prev === 14 ? 16 : prev === 16 ? 12 : 14))}
+            title={`Font size: ${fontSize}px`}
+            type="button"
+          >
+            <span className="font-size-text">{fontSize}</span>
+          </button>
+
+          {/* Assistant Toggle Button */}
           <button
             aria-label={showAssistant ? "Hide AI assistant" : "Show AI assistant"}
-            className="icon-button assistant-toggle"
+            className={`icon-button assistant-toggle ${showAssistant ? "assistant-active" : ""}`}
             onClick={() => setShowAssistant((visible) => !visible)}
-            title={showAssistant ? "Hide assistant" : "Show assistant"}
+            title={showAssistant ? "Hide AI Assistant" : "Open AI Assistant"}
+            type="button"
           >
-            {showAssistant ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}
+            {showAssistant ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
           </button>
         </div>
       </div>
 
-      <div className={`workspace-content ${showAssistant ? "" : "assistant-hidden"}`}>
+      {/* Main Workspace Body */}
+      <div
+        className={`workspace-content ${showAssistant ? "" : "assistant-hidden"} ${
+          showExplorer ? "explorer-open" : "explorer-hidden"
+        }`}
+      >
+        {/* File Explorer Sidebar */}
+        {showExplorer && (
+          <FileExplorer
+            activeFileId={activeFile.id}
+            files={files}
+            isOpen={showExplorer}
+            onClose={() => setShowExplorer(false)}
+            onCreateFile={handleCreateFile}
+            onDeleteFile={handleDeleteFile}
+            onRenameFile={handleRenameFile}
+            onSelectFile={setActiveFileId}
+            unsavedMap={unsavedMap}
+          />
+        )}
+
+        {/* Monaco Code Editor Pane */}
         <section aria-label="Code editor" className="editor-pane">
           <Editor
-            language={language}
-            onChange={(value) => setCode(value ?? "")}
+            language={activeFile.language}
+            onChange={handleCodeChange}
+            onMount={(editor) => {
+              editorRef.current = editor;
+            }}
             options={{
-              minimap: { enabled: false },
-              fontSize: 14,
+              minimap: { enabled: showMinimap },
+              fontSize,
               fontFamily: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace",
-              lineHeight: 23,
-              padding: { top: 18, bottom: 18 },
+              lineHeight: 22,
+              padding: { top: 16, bottom: 16 },
               scrollBeyondLastLine: false,
               smoothScrolling: true,
               cursorBlinking: "smooth",
               renderLineHighlight: "gutter",
               automaticLayout: true,
-              wordWrap: "on",
+              wordWrap,
               tabSize: 2,
             }}
             theme={theme}
-            value={code}
+            value={activeFile.content}
           />
-          {savedCode !== null && savedCode !== code && (
-            <button className="restore-draft" onClick={restoreSavedCode}>
-              <CircleHelp size={14} /> Restore saved draft
-            </button>
-          )}
         </section>
 
+        {/* AI Assistant Pane */}
         {showAssistant && (
-          <aside aria-label="AI coding assistant" className="assistant-pane">
-            <div className="assistant-heading">
-              <div className="assistant-title">
-                <span className="assistant-heading-icon"><Sparkles size={15} /></span>
-                <div><b>AI Assistant</b><span>Pair on your next idea</span></div>
-              </div>
-              <span className="coming-soon-badge">Not connected</span>
-            </div>
-            <div className="assistant-conversation">
-              <div className="assistant-welcome">
-                <span className="assistant-orb"><Bot size={22} /></span>
-                <h3>A little help, right when you need it.</h3>
-                <p>Ask about your code, explore an idea, or get help tracking down a bug.</p>
-              </div>
-              <div className="suggestion-list">
-                <span className="suggestion-label">TRY ASKING</span>
-                {SUGGESTIONS.map((suggestion) => (
-                  <button className="suggestion-button" disabled key={suggestion} title="Connect the AI backend to use suggestions" type="button">
-                    <Sparkles size={13} /> {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="assistant-unavailable" role="status">
-              <Bot size={15} />
-              <span>Assistant becomes available when the API is configured.</span>
-            </div>
-            <form
-              className="assistant-composer"
-              onSubmit={(event) => event.preventDefault()}
-            >
-              <textarea
-                aria-label="Ask the AI assistant"
-                disabled
-                placeholder="Ask about your code..."
-                rows={3}
-              />
-              <div className="composer-footer">
-                <span>Current file · {LANGUAGES.find((item) => item.id === language)?.label}</span>
-                <button aria-label="Send message" className="send-button" disabled type="submit">
-                  <Send size={15} />
-                </button>
-              </div>
-            </form>
-          </aside>
+          <AIAssistant
+            activeCode={activeFile.content}
+            activeLanguage={activeFile.language}
+            onApplyCode={handleApplyAICode}
+            onClose={() => setShowAssistant(false)}
+            roomId={roomId}
+          />
         )}
       </div>
 
+      {/* Status Bar */}
       <footer className="workspace-statusbar">
         <div role={saveState === "error" || connectionError ? "alert" : undefined}>
-          <span className={`status-indicator ${saveState === "error" || connectionStatus === "error" ? "status-error" : `status-${connectionStatus}`}`} />
-          {saveState === "error"
-            ? "Could not save draft — browser storage is unavailable"
-            : connectionError || `${connectionStatusLabel(connectionStatus)} · Room ${roomId}`}
+          <span
+            className={`status-indicator ${
+              saveState === "error" || connectionStatus === "error"
+                ? "status-error"
+                : `status-${connectionStatus}`
+            }`}
+          />
+          <span className="status-message">
+            {saveState === "error"
+              ? "Draft save failed — check browser storage"
+              : connectionError || `${connectionStatusLabel(connectionStatus)} · Room ${roomId}`}
+          </span>
         </div>
-        <div><span>UTF-8</span><span>Spaces: 2</span><span>Ln {code.split("\n").length}, Col 1</span></div>
+
+        <div className="statusbar-right">
+          <span>{activeFile.name}</span>
+          <span className="status-separator">·</span>
+          <span>{activeFile.language}</span>
+          <span className="status-separator">·</span>
+          <span>UTF-8</span>
+          <span className="status-separator">·</span>
+          <span>Ln {activeFile.content.split("\n").length}, Col 1</span>
+        </div>
       </footer>
     </main>
   );

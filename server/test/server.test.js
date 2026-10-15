@@ -133,3 +133,26 @@ test("rooms isolate users and code and clean up disconnected members", async () 
   const remainingUsers = await usersUpdate;
   assert.deepEqual(remainingUsers.users.map((user) => user.displayName), ["Ada"]);
 });
+
+test("ai status endpoint reports configuration status", async () => {
+  const response = await fetch(`${baseUrl}/api/ai/status`);
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.ok, true);
+  assert.equal(typeof data.configured, "boolean");
+  assert.match(data.status, /ready|unconfigured/);
+});
+
+test("ai chat endpoint validates input and reports unconfigured API key gracefully", async () => {
+  const emptyResponse = await fetch(`${baseUrl}/api/ai/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: "", code: "" }),
+  });
+  // If GEMINI_API_KEY is not set, returns 503; if set with empty input, returns 400
+  assert.ok(emptyResponse.status === 503 || emptyResponse.status === 400);
+  const data = await emptyResponse.json();
+  assert.equal(data.ok, false);
+  assert.ok(typeof data.error === "string");
+});
+

@@ -8,6 +8,8 @@ import { Server as SocketServer } from "socket.io";
 import { RoomManager } from "./rooms/roomManager.js";
 import { registerSocketHandlers } from "./socket/socketHandlers.js";
 
+import { generateAIResponse } from "./ai/aiService.js";
+
 export function getClientOrigins(value = process.env.CLIENT_URL) {
   return (value || "http://localhost:5173")
     .split(",")
@@ -32,7 +34,8 @@ export function createServer({ clientUrl = process.env.CLIENT_URL } = {}) {
   });
 
   app.use(cors(corsOptions));
-  app.use(express.json({ limit: "32kb" }));
+  app.use(express.json({ limit: "256kb" }));
+
   app.get("/api/health", (_request, response) => {
     response.json({
       status: "ok",
@@ -40,6 +43,37 @@ export function createServer({ clientUrl = process.env.CLIENT_URL } = {}) {
       timestamp: new Date().toISOString(),
     });
   });
+
+  app.get("/api/ai/status", (_request, response) => {
+    const configured = Boolean(process.env.GEMINI_API_KEY);
+    response.json({
+      ok: true,
+      configured,
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+      status: configured ? "ready" : "unconfigured",
+    });
+  });
+
+  app.post("/api/ai/chat", async (request, response) => {
+    const { prompt, code, language, action, history } = request.body || {};
+    try {
+      const result = await generateAIResponse({
+        prompt,
+        code,
+        language,
+        action,
+        history,
+      });
+      response.json(result);
+    } catch (error) {
+      const status = error.status || 500;
+      response.status(status).json({
+        ok: false,
+        error: error.message || "AI processing failed.",
+      });
+    }
+  });
+
   app.use((_request, response) => {
     response.status(404).json({ error: "Route not found." });
   });

@@ -129,3 +129,53 @@ export function emitWithAck(socketInstance, eventName, payload) {
     });
   });
 }
+
+export async function sendAIChatRequest({ prompt, code, language, action = "chat", history = [], signal } = {}) {
+  const serverUrl = getEffectiveServerUrl();
+  if (!serverUrl) {
+    throw new Error(
+      "The AI assistant is not connected. The backend server is not running or VITE_API_URL is not configured."
+    );
+  }
+
+  const endpoint = `${serverUrl}/api/ai/chat`;
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, code, language, action, history }),
+      signal,
+    });
+  } catch (netError) {
+    if (netError.name === "AbortError") {
+      throw netError;
+    }
+    throw new Error(
+      `Could not reach the AI service at ${serverUrl}. Check that your backend server is running and accessible.`
+    );
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || `AI request failed with status ${response.status}.`);
+  }
+  return data;
+}
+
+export async function fetchAIStatus() {
+  const serverUrl = getEffectiveServerUrl();
+  if (!serverUrl) {
+    return { ok: false, configured: false, status: "unconfigured" };
+  }
+  try {
+    const res = await fetch(`${serverUrl}/api/ai/status`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return { ok: false, configured: false, status: "unavailable" };
+    return await res.json();
+  } catch {
+    return { ok: false, configured: false, status: "offline" };
+  }
+}
+
