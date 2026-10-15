@@ -1,0 +1,13 @@
+{
+  "name": "codesync-ai-root",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix client run build",
+    "dev": "npm --prefix client run dev",
+    "dev:server": "npm --prefix server run dev",
+    "preview": "npm --prefix client run preview",
+    "test:server": "npm --prefix server test"
+  }
+}

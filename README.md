@@ -84,13 +84,27 @@ No Gemini key or database is required for room collaboration.
 
 ```sh
 # Run backend tests
-cd server && npm test
+npm --prefix server test
 
-# Run frontend production build
-cd client && npm run build
+# Run frontend production build (from root or client)
+npm run build
 ```
 
 Backend tests cover the health route and CORS, room ID/name validation, maximum room size, idle-room expiry, code synchronization, room isolation, authorization, and disconnect cleanup.
+
+## Deployment to Vercel
+
+The frontend is fully configured for deployment on Vercel:
+
+- **Root Directory configuration**:
+  - **Option 1 (Default)**: Leave Root Directory as `./` (repo root). The root `vercel.json` and `package.json` will automatically build the `client` and serve `client/dist`.
+  - **Option 2 (Subdirectory)**: In Vercel Project Settings ➔ General ➔ Root Directory, set the root directory to `client`. The `client/vercel.json` handles SPA routing and Vite builds automatically.
+- **Backend Connection**:
+  - The frontend builds and renders completely standalone without requiring a deployed backend.
+  - When you deploy the backend service (e.g. to Railway, Render, Fly.io):
+    1. In **Vercel Project Settings ➔ Environment Variables**, set `VITE_API_URL` to your backend URL (e.g. `https://your-backend.railway.app`).
+    2. In your **Backend Environment Variables**, set `CLIENT_URL` to include your Vercel frontend URL (e.g. `https://your-app.vercel.app`).
+
 
 ## Architecture and synchronization
 
