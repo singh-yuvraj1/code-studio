@@ -3,65 +3,72 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowRight,
   Bot,
+  Braces,
   Clock,
   Code2,
   FileCode2,
-  Focus,
   FolderOpen,
+  FolderPlus,
   GitBranch,
   Layers,
   Link2,
   Plus,
+  Radio,
+  Search,
   Sparkles,
   Terminal,
   Trash2,
   UsersRound,
-  Wifi,
   Zap,
 } from "lucide-react";
-import Brand from "../components/Brand.jsx";
-import { connectSocket, emitWithAck, getDisplayName, getSocket, isBackendConfigured } from "../lib/socket.js";
+import {
+  connectSocket,
+  emitWithAck,
+  getDisplayName,
+  getSocket,
+  isBackendConfigured,
+} from "../lib/socket.js";
 
 const ROOM_ID_PATTERN = /^[a-zA-Z0-9-]{4,40}$/;
 
-const TEMPLATES = [
+const STARTER_TEMPLATES = [
   {
-    id: "js",
-    title: "JavaScript",
-    lang: "javascript",
-    desc: "Modern ES6+ workspace with console output",
-    icon: Code2,
-    badge: "JS",
-  },
-  {
-    id: "ts",
-    title: "TypeScript",
+    id: "ts-react",
+    title: "React + TypeScript",
     lang: "typescript",
-    desc: "Typed functions, interfaces, and utilities",
+    desc: "Component tree, hooks, and typed props ready for modern UI building.",
+    badge: "REACT",
+    icon: Code2,
+  },
+  {
+    id: "node-api",
+    title: "Node.js REST API",
+    lang: "javascript",
+    desc: "Express server, middleware routes, and mock data controllers.",
+    badge: "NODE",
     icon: Terminal,
-    badge: "TS",
   },
   {
-    id: "python",
-    title: "Python",
+    id: "python-algo",
+    title: "Python Data & Algorithms",
     lang: "python",
-    desc: "Data structures, algorithms, and scripting",
+    desc: "Clean algorithmic functions, data structures, and test assertions.",
+    badge: "PYTHON",
     icon: FileCode2,
-    badge: "PY",
   },
   {
-    id: "web",
-    title: "Full-Stack Web",
+    id: "fullstack-web",
+    title: "Full-Stack Web Workspace",
     lang: "html",
-    desc: "HTML5, CSS styles, and JavaScript modules",
-    icon: Layers,
+    desc: "Complete project with src/, components/, public/, and package.json.",
     badge: "WEB",
+    icon: Layers,
   },
 ];
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const roomIdInput = useRef(null);
+  const roomIdInputRef = useRef(null);
   const [roomId, setRoomId] = useState("");
   const [error, setError] = useState("");
   const [pendingAction, setPendingAction] = useState("");
@@ -77,8 +84,8 @@ export default function HomePage() {
           setRecentWorkspaces(parsed);
         }
       }
-    } catch (e) {
-      console.warn("Unable to read recent workspaces", e);
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -94,17 +101,15 @@ export default function HomePage() {
     }
   }
 
-  // Generate a random local room ID
   function generateLocalRoomId(prefix = "CS") {
     return `${prefix}-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
   }
 
-  async function createRoom() {
+  async function handleCreateRoom() {
     if (pendingAction) return;
     setPendingAction("create");
     setError("");
 
-    // If backend is not configured or in production without URL, allow standalone workspace creation directly
     if (!isBackendConfigured()) {
       const localId = generateLocalRoomId();
       navigate(`/room/${localId}`);
@@ -119,37 +124,21 @@ export default function HomePage() {
       });
       navigate(`/room/${response.roomId}`);
     } catch (requestError) {
-      // Provide actionable message with fallback option to launch offline workspace
-      setError(
-        `${requestError.message} You can also launch a local offline workspace below.`
-      );
+      // Fallback to local workspace if backend cannot be reached
+      const fallbackId = generateLocalRoomId("OFFLINE");
+      navigate(`/room/${fallbackId}`);
     } finally {
       setPendingAction("");
     }
   }
 
-  function launchLocalWorkspace() {
-    const localId = generateLocalRoomId("LOCAL");
-    navigate(`/room/${localId}`);
-  }
-
-  function launchTemplate(template) {
-    const templateRoomId = generateLocalRoomId(template.badge);
-    navigate(`/room/${templateRoomId}`);
-  }
-
-  function focusJoinInput() {
-    roomIdInput.current?.focus();
-    roomIdInput.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  async function joinRoom(event) {
-    event.preventDefault();
+  async function handleJoinRoom(e) {
+    e.preventDefault();
     if (pendingAction) return;
-    const normalizedId = roomId.trim();
-    if (!ROOM_ID_PATTERN.test(normalizedId)) {
-      setError("Use 4–40 letters, numbers, or hyphens.");
-      roomIdInput.current?.focus();
+    const normalized = roomId.trim();
+    if (!ROOM_ID_PATTERN.test(normalized)) {
+      setError("Please enter 4–40 letters, numbers, or hyphens.");
+      roomIdInputRef.current?.focus();
       return;
     }
 
@@ -157,8 +146,7 @@ export default function HomePage() {
     setError("");
 
     if (!isBackendConfigured()) {
-      // Open offline/local copy of that room ID
-      navigate(`/room/${normalizedId}`);
+      navigate(`/room/${normalized}`);
       return;
     }
 
@@ -166,16 +154,21 @@ export default function HomePage() {
       const socket = getSocket();
       await connectSocket(socket);
       const response = await emitWithAck(socket, "room:join", {
-        roomId: normalizedId,
+        roomId: normalized,
         displayName: getDisplayName(),
       });
       navigate(`/room/${response.roomId}`);
     } catch (requestError) {
-      setError(requestError.message);
-      roomIdInput.current?.focus();
+      // Allow opening anyway in offline mode
+      navigate(`/room/${normalized}`);
     } finally {
       setPendingAction("");
     }
+  }
+
+  function launchTemplate(template) {
+    const templateId = generateLocalRoomId(template.badge);
+    navigate(`/room/${templateId}`);
   }
 
   function formatTimeAgo(timestamp) {
@@ -188,151 +181,212 @@ export default function HomePage() {
   }
 
   return (
-    <main className="landing-shell">
-      {/* Top Navbar */}
-      <nav aria-label="Main navigation" className="landing-nav page-width">
-        <Brand />
-        <div className="nav-right">
-          <span className="nav-context">Code Studio Platform</span>
-          <button
-            className="button button-quiet nav-scratchpad-btn"
-            onClick={launchLocalWorkspace}
-            title="Open an instant code editor scratchpad"
-            type="button"
-          >
-            <Plus size={13} />
-            <span>New Scratchpad</span>
-          </button>
+    <div className="home-page-root">
+      {/* Navbar */}
+      <header className="home-nav">
+        <div className="home-nav-container">
+          <Link className="home-brand" to="/">
+            <span className="brand-logo-mark">
+              <Braces size={18} strokeWidth={2.4} />
+            </span>
+            <span className="brand-title">
+              Code Studio<span className="brand-accent"> IDE</span>
+            </span>
+          </Link>
+
+          <div className="home-nav-right">
+            <span className="platform-tag">v2.0 Professional</span>
+            <button
+              className="button button-primary nav-launch-btn"
+              disabled={Boolean(pendingAction)}
+              onClick={handleCreateRoom}
+              type="button"
+            >
+              <Plus size={14} />
+              <span>New Workspace</span>
+            </button>
+          </div>
         </div>
-      </nav>
+      </header>
 
       {/* Hero Section */}
-      <section aria-labelledby="landing-title" className="hero page-width">
-        <div className="hero-copy">
-          <div className="eyebrow">
-            <span className="eyebrow-dot" />
-            Full-Stack AI Coding Environment
+      <section className="home-hero">
+        <div className="home-hero-content">
+          <div className="hero-eyebrow">
+            <span className="hero-eyebrow-dot" />
+            <span>AI-Powered Collaborative IDE</span>
           </div>
-          <h1 id="landing-title">Your team&apos;s workspace for code.</h1>
-          <p className="hero-description">
-            Write, collaborate, review, and debug together in a professional Monaco-powered workspace with AI assistance.
+
+          <h1 className="hero-heading">
+            The intelligent workspace for real-time software engineering.
+          </h1>
+
+          <p className="hero-subheading">
+            Combines the precision of Monaco Editor, hierarchical multi-folder
+            workspaces, instant multiplayer collaboration, and integrated Gemini AI assistance.
           </p>
-          <div className="hero-actions">
+
+          <div className="hero-cta-group">
             <button
-              className="button button-primary"
+              className="button button-primary hero-btn-main"
               disabled={Boolean(pendingAction)}
-              onClick={createRoom}
+              onClick={handleCreateRoom}
               type="button"
             >
-              <Code2 size={15} />
-              {pendingAction === "create" ? "Opening…" : "Create Workspace"}
+              <Code2 size={16} />
+              <span>{pendingAction === "create" ? "Starting…" : "Create Workspace"}</span>
               <ArrowRight size={15} />
             </button>
+
             <button
-              className="button button-secondary"
-              disabled={Boolean(pendingAction)}
-              onClick={focusJoinInput}
+              className="button button-secondary hero-btn-sub"
+              onClick={() => {
+                const offlineId = generateLocalRoomId("LOCAL");
+                navigate(`/room/${offlineId}`);
+              }}
               type="button"
             >
-              Join with Room ID
+              <FolderOpen size={15} />
+              <span>Open Scratchpad</span>
             </button>
           </div>
 
-          {/* Join Existing Workspace Form */}
-          <form className="join-form" noValidate onSubmit={joinRoom}>
-            <label className="join-label" htmlFor="room-id">
-              <Link2 aria-hidden="true" size={14} />
-              Join an existing workspace
+          {/* Join Form */}
+          <form className="home-join-form" onSubmit={handleJoinRoom}>
+            <label className="join-form-label" htmlFor="join-room-input">
+              <Link2 size={14} />
+              <span>Join with Room ID</span>
             </label>
-            <div className={`join-input-wrap ${error ? "has-error" : ""}`}>
+            <div className={`join-input-group ${error ? "has-error" : ""}`}>
               <input
-                aria-describedby={error ? "room-error" : "room-hint"}
-                aria-invalid={Boolean(error)}
                 autoComplete="off"
-                id="room-id"
-                onChange={(event) => {
-                  setRoomId(event.target.value);
+                id="join-room-input"
+                onChange={(e) => {
+                  setRoomId(e.target.value);
                   if (error) setError("");
                 }}
-                placeholder="e.g. CS-A1B2C3D4"
-                ref={roomIdInput}
+                placeholder="e.g. CS-4A9B-7C2D"
+                ref={roomIdInputRef}
                 value={roomId}
               />
-              <button className="join-submit" disabled={Boolean(pendingAction)} type="submit">
-                {pendingAction === "join" ? "Joining…" : "Join"}{" "}
-                <ArrowRight aria-hidden="true" size={14} />
+              <button
+                className="join-action-btn"
+                disabled={Boolean(pendingAction)}
+                type="submit"
+              >
+                {pendingAction === "join" ? "Connecting…" : "Join Room"}
+                <ArrowRight size={14} />
               </button>
             </div>
-            <p
-              className={error ? "form-error" : "join-hint"}
-              id={error ? "room-error" : "room-hint"}
-              role={error ? "alert" : undefined}
-            >
-              {error || "Room IDs use 4–40 letters, numbers, or hyphens."}
-            </p>
+            {error && <p className="join-error-msg">{error}</p>}
           </form>
         </div>
 
-        {/* Hero Visual Preview */}
-        <div aria-label="Code editor preview" className="hero-visual" role="img">
-          <div className="editor-preview">
-            <div className="preview-titlebar">
-              <div aria-hidden="true" className="window-dots">
+        {/* Hero Visual Mockup */}
+        <div className="home-hero-preview">
+          <div className="ide-mockup-frame">
+            <div className="mockup-titlebar">
+              <div className="mockup-window-controls">
                 <i />
                 <i />
                 <i />
               </div>
-              <div className="preview-tab">
-                <span className="js-badge">JS</span> main.js
-              </div>
-              <span className="preview-mode">Code Studio</span>
+              <span className="mockup-title">Code Studio — src/App.jsx</span>
+              <span className="mockup-live-badge">
+                <Radio className="pulse" size={10} /> Live Room
+              </span>
             </div>
-            <div className="preview-body">
-              <div aria-hidden="true" className="preview-gutter">
-                {Array.from({ length: 9 }, (_, index) => (
-                  <span key={index}>{index + 1}</span>
-                ))}
+
+            <div className="mockup-body">
+              {/* Activity Bar Rail */}
+              <div className="mockup-rail">
+                <span className="rail-icon active">
+                  <Code2 size={13} />
+                </span>
+                <span className="rail-icon">
+                  <Search size={13} />
+                </span>
+                <span className="rail-icon">
+                  <UsersRound size={13} />
+                </span>
+                <span className="rail-icon">
+                  <Sparkles size={13} />
+                </span>
               </div>
-              <pre>
-                <span className="code-purple">import</span> {"{ "}
-                <span className="code-blue">ai</span>
-                {" }"} <span className="code-purple">from</span>{" "}
-                <span className="code-green">&quot;@code-studio/ai&quot;</span>;
-                {"\n\n"}<span className="code-purple">export default async function</span>{" "}
-                <span className="code-yellow">pairProgram</span>() {"{"}
-                {"\n"}  <span className="code-purple">const</span>{" "}
-                <span className="code-blue">insights</span> ={" "}
-                <span className="code-purple">await</span>{" "}
-                <span className="code-blue">ai</span>.<span className="code-yellow">reviewCode</span>();
-                {"\n"}  <span className="code-purple">return</span> insights;
-                {"\n"}{"}"}
-              </pre>
+
+              {/* Sidebar Tree */}
+              <div className="mockup-tree">
+                <div className="mockup-tree-header">EXPLORER</div>
+                <div className="mockup-tree-node folder open">📁 src</div>
+                <div className="mockup-tree-node file indent active">📄 App.jsx</div>
+                <div className="mockup-tree-node file indent">📄 Editor.jsx</div>
+                <div className="mockup-tree-node folder">📁 components</div>
+                <div className="mockup-tree-node file">📄 package.json</div>
+              </div>
+
+              {/* Editor Code Area */}
+              <div className="mockup-editor">
+                <div className="mockup-tabs">
+                  <span className="mockup-tab active">
+                    <b className="tab-pill-js">JS</b> App.jsx
+                  </span>
+                  <span className="mockup-tab">Editor.jsx</span>
+                </div>
+                <div className="mockup-code-lines">
+                  <pre>
+                    <span className="hl-kw">import</span> React <span className="hl-kw">from</span> <span className="hl-str">&apos;react&apos;</span>;{"\n"}
+                    <span className="hl-kw">import</span> &#123; ai &#125; <span className="hl-kw">from</span> <span className="hl-str">&apos;@codestudio/ai&apos;</span>;{"\n\n"}
+                    <span className="hl-kw">export default async function</span> <span className="hl-fn">pairProgram</span>() &#123;{"\n"}
+                    {"  "}<span className="hl-kw">const</span> analysis = <span className="hl-kw">await</span> ai.<span className="hl-fn">review</span>();{"\n"}
+                    {"  "}<span className="hl-kw">return</span> analysis;{"\n"}
+                    &#125;
+                  </pre>
+                </div>
+              </div>
+
+              {/* Mini AI panel preview */}
+              <div className="mockup-ai-preview">
+                <div className="mockup-ai-header">
+                  <Sparkles size={12} />
+                  <span>AI Assistant</span>
+                </div>
+                <div className="mockup-ai-chat">
+                  <div className="ai-preview-msg user">
+                    Find edge cases in pairProgram()
+                  </div>
+                  <div className="ai-preview-msg assistant">
+                    The function handles asynchronous review cleanly. Consider adding a timeout fallback.
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="preview-footer">
+
+            <div className="mockup-statusbar">
               <span>
-                <GitBranch aria-hidden="true" size={13} /> main
+                <GitBranch size={11} /> main
               </span>
               <span>
-                <Sparkles aria-hidden="true" size={13} /> Gemini AI
+                <Radio size={11} /> CS-8B2A-9C4D
               </span>
-              <span>UTF-8</span>
+              <span className="status-right-col">Ln 4, Col 12 · UTF-8 · JavaScript</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Starter Templates Section */}
-      <section aria-labelledby="templates-title" className="templates-section page-width">
-        <div className="section-header">
-          <h2 id="templates-title">Quick Starter Templates</h2>
-          <p>Launch an instant workspace configured for your language of choice.</p>
+      {/* Starter Templates */}
+      <section className="home-templates-section">
+        <div className="home-section-header">
+          <h2>Starter Workspaces</h2>
+          <p>Instant workspace configurations with multi-file architectures.</p>
         </div>
-        <div className="templates-grid">
-          {TEMPLATES.map((tmpl) => {
+
+        <div className="home-templates-grid">
+          {STARTER_TEMPLATES.map((tmpl) => {
             const Icon = tmpl.icon;
             return (
               <div
-                className="template-card"
+                className="template-box"
                 key={tmpl.id}
                 onClick={() => launchTemplate(tmpl)}
                 role="button"
@@ -344,15 +398,15 @@ export default function HomePage() {
                   }
                 }}
               >
-                <div className="template-card-top">
+                <div className="template-box-top">
                   <span className="template-badge">{tmpl.badge}</span>
                   <Icon size={16} />
                 </div>
                 <h3>{tmpl.title}</h3>
                 <p>{tmpl.desc}</p>
-                <div className="template-launch-link">
+                <div className="template-launch-hint">
                   <span>Launch Workspace</span>
-                  <ArrowRight size={12} />
+                  <ArrowRight size={13} />
                 </div>
               </div>
             );
@@ -360,17 +414,18 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Recent Workspaces Section (Shown if user has visited rooms) */}
+      {/* Recent Workspaces (if any) */}
       {recentWorkspaces.length > 0 && (
-        <section aria-labelledby="recents-title" className="recents-section page-width">
-          <div className="section-header">
-            <h2 id="recents-title">Recent Workspaces</h2>
-            <p>Pick up right where you left off on this device.</p>
+        <section className="home-recents-section">
+          <div className="home-section-header">
+            <h2>Recent Workspaces</h2>
+            <p>Pick up where you left off on this device.</p>
           </div>
-          <div className="recents-grid">
+
+          <div className="home-recents-grid">
             {recentWorkspaces.map((ws) => (
               <div
-                className="recent-card"
+                className="recent-box"
                 key={ws.id}
                 onClick={() => navigate(`/room/${ws.id}`)}
                 role="button"
@@ -382,24 +437,24 @@ export default function HomePage() {
                   }
                 }}
               >
-                <div className="recent-card-header">
-                  <div className="recent-card-title">
-                    <FolderOpen size={14} />
+                <div className="recent-box-header">
+                  <div className="recent-box-title">
+                    <FolderOpen size={15} />
                     <span>{ws.title || ws.id}</span>
                   </div>
                   <button
-                    aria-label={`Remove ${ws.id} from recent history`}
-                    className="recent-delete-btn"
+                    aria-label={`Remove ${ws.id}`}
+                    className="recent-remove-btn"
                     onClick={(e) => removeRecentWorkspace(ws.id, e)}
                     title="Remove from history"
                     type="button"
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={13} />
                   </button>
                 </div>
-                <div className="recent-card-meta">
-                  <span className="recent-room-id">ROOM / {ws.id}</span>
-                  <span className="recent-time">
+                <div className="recent-box-meta">
+                  <span className="recent-id-badge">ROOM / {ws.id}</span>
+                  <span className="recent-time-text">
                     <Clock size={11} /> {formatTimeAgo(ws.updatedAt)}
                   </span>
                 </div>
@@ -409,44 +464,60 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Feature Strip */}
-      <section aria-label="Platform features" className="feature-strip page-width">
-        <article className="feature-item">
-          <span className="feature-icon">
-            <UsersRound aria-hidden="true" size={17} />
-          </span>
-          <div>
-            <h2>Real-time Collaboration</h2>
-            <p>Work on code with your teammates with live synchronization.</p>
+      {/* Platform Features Grid */}
+      <section className="home-features-section">
+        <div className="feature-grid">
+          <div className="feature-cell">
+            <span className="feature-cell-icon">
+              <UsersRound size={18} />
+            </span>
+            <h3>Real-Time Collaboration</h3>
+            <p>
+              Socket.IO powered multiplayer coding. Instant sync for code, files, and folder structures.
+            </p>
           </div>
-        </article>
-        <article className="feature-item">
-          <span className="feature-icon">
-            <Bot aria-hidden="true" size={17} />
-          </span>
-          <div>
-            <h2>Gemini AI Assistant</h2>
-            <p>Explain code, identify bugs, write tests, and explore refactoring.</p>
+
+          <div className="feature-cell">
+            <span className="feature-cell-icon">
+              <Sparkles size={18} />
+            </span>
+            <h3>Gemini AI Assistant</h3>
+            <p>
+              Integrated pair programmer for code review, bug detection, performance optimization, and unit testing.
+            </p>
           </div>
-        </article>
-        <article className="feature-item">
-          <span className="feature-icon">
-            <Focus aria-hidden="true" size={17} />
-          </span>
-          <div>
-            <h2>Multi-File Monaco Editor</h2>
-            <p>Full language tooling, syntax highlighting, and local persistence.</p>
+
+          <div className="feature-cell">
+            <span className="feature-cell-icon">
+              <FolderPlus size={18} />
+            </span>
+            <h3>Hierarchical File Explorer</h3>
+            <p>
+              Create nested folders and files, rename, delete, open local disk directories, and export workspaces.
+            </p>
           </div>
-        </article>
+
+          <div className="feature-cell">
+            <span className="feature-cell-icon">
+              <Terminal size={18} />
+            </span>
+            <h3>Developer Terminal & Diagnostics</h3>
+            <p>
+              Interactive terminal commands, Monaco syntax error diagnostics, and workspace output logs.
+            </p>
+          </div>
+        </div>
       </section>
 
       {/* Footer */}
-      <footer className="landing-footer page-width">
-        <span>© 2026 Code Studio</span>
-        <span className="preview-disclosure">
-          Production Ready · Dual-Mode Collaboration & Offline Editor
-        </span>
+      <footer className="home-footer">
+        <div className="footer-container">
+          <span>© 2026 Code Studio IDE. Built for collaborative engineering.</span>
+          <span className="footer-tag">
+            Powered by Monaco · Socket.IO · Google Gemini
+          </span>
+        </div>
       </footer>
-    </main>
+    </div>
   );
 }

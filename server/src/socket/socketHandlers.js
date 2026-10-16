@@ -155,6 +155,90 @@ export function registerSocketHandlers(io, roomManager) {
       respond(socket, acknowledge, { ok: true });
     });
 
+    socket.on("file:change", (payload = {}, acknowledge) => {
+      const roomId = socket.data.roomId;
+      if (!roomId) {
+        respond(socket, acknowledge, {
+          ok: false,
+          message: "Join a room before sending file changes.",
+        });
+        return;
+      }
+
+      const { fileId, content, language } = payload ?? {};
+      if (typeof fileId !== "string" || typeof content !== "string" || content.length > MAX_CODE_LENGTH) {
+        respond(socket, acknowledge, {
+          ok: false,
+          message: "Invalid file update payload.",
+        });
+        return;
+      }
+
+      // Also sync room.code if this is the active file
+      roomManager.setCode(roomId, content);
+
+      socket.to(roomId).emit("file:sync", {
+        fileId,
+        content,
+        language,
+        updatedBy: socket.data.displayName,
+      });
+      respond(socket, acknowledge, { ok: true });
+    });
+
+    socket.on("workspace:sync", (payload = {}, acknowledge) => {
+      const roomId = socket.data.roomId;
+      if (!roomId) {
+        respond(socket, acknowledge, {
+          ok: false,
+          message: "Join a room before syncing workspace.",
+        });
+        return;
+      }
+
+      const { files, activeFileId } = payload ?? {};
+      if (!Array.isArray(files)) {
+        respond(socket, acknowledge, {
+          ok: false,
+          message: "Files must be an array of workspace nodes.",
+        });
+        return;
+      }
+
+      roomManager.setFiles(roomId, files);
+      socket.to(roomId).emit("workspace:synced", {
+        files,
+        activeFileId,
+        updatedBy: socket.data.displayName,
+      });
+      respond(socket, acknowledge, { ok: true });
+    });
+
+    socket.on("tree:action", (payload = {}, acknowledge) => {
+      const roomId = socket.data.roomId;
+      if (!roomId) {
+        respond(socket, acknowledge, {
+          ok: false,
+          message: "Join a room before performing tree actions.",
+        });
+        return;
+      }
+
+      const { action, node, files, nodeId } = payload ?? {};
+      if (Array.isArray(files)) {
+        roomManager.setFiles(roomId, files);
+      }
+
+      socket.to(roomId).emit("tree:action", {
+        action,
+        node,
+        nodeId,
+        files,
+        updatedBy: socket.data.displayName,
+      });
+      respond(socket, acknowledge, { ok: true });
+    });
+
     socket.on("room:leave", (acknowledge) => {
       leaveCurrentRoom();
       respond(socket, acknowledge, { ok: true });

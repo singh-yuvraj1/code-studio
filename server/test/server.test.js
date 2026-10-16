@@ -156,3 +156,50 @@ test("ai chat endpoint validates input and reports unconfigured API key graceful
   assert.ok(typeof data.error === "string");
 });
 
+test("workspace file and tree events synchronize across room members", async () => {
+  const [user1, user2] = await Promise.all([connectClient(), connectClient()]);
+  const created = await request(user1, "room:create", { displayName: "Alice" });
+  assert.equal(created.ok, true);
+
+  const joined = await request(user2, "room:join", {
+    roomId: created.roomId,
+    displayName: "Bob",
+  });
+  assert.equal(joined.ok, true);
+
+  const treeSyncEvent = waitForEvent(user2, "workspace:synced");
+  const testFiles = [
+    { id: "dir-1", name: "src", type: "folder", parentId: null },
+    { id: "file-1", name: "index.js", type: "file", parentId: "dir-1", content: "console.log('hi');" },
+  ];
+
+  const syncAck = await request(user1, "workspace:sync", {
+    files: testFiles,
+    activeFileId: "file-1",
+  });
+  assert.equal(syncAck.ok, true);
+
+  const syncedPayload = await treeSyncEvent;
+  assert.deepEqual(syncedPayload.files, testFiles);
+  assert.equal(syncedPayload.activeFileId, "file-1");
+  assert.equal(syncedPayload.updatedBy, "Alice");
+
+  // Test individual file edit sync
+  const fileSyncEvent = waitForEvent(user1, "file:sync");
+  const fileEditAck = await request(user2, "file:change", {
+    fileId: "file-1",
+    content: "console.log('hello from bob');",
+    language: "javascript",
+  });
+  assert.equal(fileEditAck.ok, true);
+
+  const receivedFileChange = await fileSyncEvent;
+  assert.equal(receivedFileChange.fileId, "file-1");
+  assert.equal(receivedFileChange.content, "console.log('hello from bob');");
+  assert.equal(receivedFileChange.updatedBy, "Bob");
+
+  user1.disconnect();
+  user2.disconnect();
+});
+
+

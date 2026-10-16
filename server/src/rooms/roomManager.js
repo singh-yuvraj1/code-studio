@@ -50,6 +50,7 @@ export class RoomManager {
 
     const room = {
       code: DEFAULT_CODE,
+      files: null,
       users: new Map(),
       cleanupTimer: null,
     };
@@ -103,6 +104,13 @@ export class RoomManager {
     return room;
   }
 
+  setFiles(roomId, files) {
+    const room = this.getRoom(roomId);
+    if (!room) return null;
+    room.files = files;
+    return room;
+  }
+
   getUsers(roomId) {
     const room = this.getRoom(roomId);
     return room ? [...room.users.values()] : [];
@@ -115,6 +123,7 @@ export class RoomManager {
       roomId,
       code: room.code,
       users: [...room.users.values()],
+      files: room.files || null,
     };
   }
 }

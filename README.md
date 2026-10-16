@@ -1,15 +1,39 @@
-# CodeSync AI
+# Code Studio IDE
 
-CodeSync AI is a browser-based coding workspace with room-based collaboration. The frontend and real-time collaboration server are implemented; Gemini AI integration is not included in this phase.
+Code Studio is a professional, modern AI-powered coding environment inspired by Google Antigravity, VS Code, and Cursor. It unites three core developer pillars:
 
-## Features
+1. **A Powerful Code Editor**: Monaco Editor with VS Code-grade syntax highlighting, line numbers, diagnostics, multiple file tabs, breadcrumbs, and keyboard shortcuts.
+2. **Integrated Antigravity-Style AI Coding Assistant**: Powered by Google Gemini. Pair program directly alongside your code: Explain Code, Find Bugs, Optimize Algorithms, Generate Unit Tests, and Refactor with one-click "Apply to Editor" actions.
+3. **Real-Time Multiplayer Collaboration**: Share your Room ID with teammates for live multiplayer coding, presence indicators, real-time code synchronization, and shared workspace tree operations.
 
-- Create a room or join an active room by ID.
-- Edit JavaScript, TypeScript, Python, HTML, CSS, JSON, Java, and C++ with Monaco.
-- Synchronize room code changes over Socket.IO with a short client-side debounce.
-- See connected display names, user count, and connection/reconnection status.
-- Choose an editor theme, save a local browser draft, and download the current file.
-- Keep rooms isolated and limit each room to 10 connected users.
+## Key Features
+
+- **Hierarchical File & Folder Management**:
+  - **Create Folder**: Create folders at the root level or nested inside any subfolder.
+  - **Open Local Folder**: Native browser folder selection via `window.showDirectoryPicker` with fallback to directory input.
+  - **Nested Files & Folders**: Expand, collapse, rename, and delete nodes with recursive cleanup.
+  - **Workspace Import & Export**: Export entire project structure as JSON bundle or download individual files.
+- **Monaco Code Editor**:
+  - Syntax highlighting for JavaScript, TypeScript, Python, HTML, CSS, JSON, Java, C++, Rust, Go, and more.
+  - File tabs with dirty indicators and close controls.
+  - Clickable breadcrumbs navigation.
+  - Word wrap toggle (`Alt+Z`), minimap toggle, font size & tab size customization.
+- **Google Gemini AI Assistant**:
+  - Context-aware assistance: Uses the active file and active editor text selection as primary prompt context.
+  - Quick action chips: `Explain`, `Find Bugs`, `Optimize`, `Write Tests`, `Refactor`, `Generate Code`.
+  - One-click **Apply to Editor**: Replaces selected code or updates the file, automatically synchronizing changes with connected teammates.
+  - Secure backend proxy: `GEMINI_API_KEY` is kept strictly on the Node.js backend.
+- **Real-Time Collaboration**:
+  - Instant room creation with clean IDs (e.g. `CS-7B2A-9C4D`).
+  - Live peer presence avatars with customized colors and active user counters.
+  - Socket.IO debounced code synchronization.
+  - Shared tree synchronization (`tree:action` and `workspace:sync`).
+  - Seamless offline mode fallback when backend is temporarily unavailable.
+- **Dockable Bottom Drawer**:
+  - `Problems`: Real-time Monaco diagnostics with click-to-jump to line/column.
+  - `Output`: Workspace lifecycle events, saving status, and operational logs.
+  - `Collaboration`: Live feed of peer joins, leaves, and synchronized edits.
+  - `Developer Console`: Built-in utility commands (`help`, `ls`, `pwd`, `cat`, `stats`, `echo`, `date`, `clear`).
 
 ## Stack
 

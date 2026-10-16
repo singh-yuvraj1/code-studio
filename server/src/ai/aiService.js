@@ -19,8 +19,9 @@ export async function generateAIResponse({
   model = DEFAULT_MODEL,
 } = {}) {
   if (!apiKey) {
-    const error = new Error("GEMINI_API_KEY is not configured on the server. Please add your GEMINI_API_KEY to your server environment variables.");
+    const error = new Error("GEMINI_API_KEY is not configured on the server. Please add your GEMINI_API_KEY to server/.env or your backend environment variables (get a free key at https://aistudio.google.com/).");
     error.status = 503;
+    error.code = "GEMINI_KEY_MISSING";
     throw error;
   }
 
